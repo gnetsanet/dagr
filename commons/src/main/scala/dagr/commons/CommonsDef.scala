@@ -24,6 +24,10 @@
 
 package dagr.commons
 
+import dagr.commons.util.{LazyLogging, Logger}
+
+import scala.util.{Failure, Success, Try}
+
 /**
   * Object that is designed to be imported with `import CommonsDef._` in any/all classes
   * much like the way that scala.PreDef is imported in all files automatically.
@@ -50,6 +54,7 @@ class CommonsDef {
     *   `val x = foo; foo +=1; return x`
     * to be replaced with
     *   `yieldAndThen(foo) {foo +=1}`
+    *
     * @param it the value to be returned/yielded
     * @param block a block of code to be evaluated
     * @tparam A the type of thing to be returned (usually inferred)
@@ -69,6 +74,36 @@ class CommonsDef {
     def safelyClose() : Unit = {
       try { c.close() }
       catch { case ex: Exception => Unit }
+    }
+  }
+
+  /** Performs the unit of work on a resource of type [A] cleaning up the resource in the case of an exception or upon
+    * completion, and ultimately returning a [Try] of type [B].  An exception during cleanup does not change the success
+    * of the work.  If a logger is provided, the exception is logged, otherwise the exception is squashed.
+    *
+    * @param resource the resource upon which work is performed.
+    * @param cleanup the clean up method to apply to the resource when the work is complete.
+    * @param doWork the work to perform on the resource, returning a result of type [B].
+    * @tparam A the resource type.
+    * @tparam B the result type of the work performed.
+    * @return [Success] if the work was performed successfully, [Failure] otherwise.
+    */
+  def cleanly[A, B](resource: A, logger: Option[Logger] = None)(cleanup: A => Unit)(doWork: A => B): Try[B] = {
+    try {
+      Success(doWork(resource))
+    } catch {
+      case e: Exception => Failure(e)
+    }
+    finally {
+      try {
+        if (resource != null) cleanup(resource)
+      } catch {
+        case e: Exception =>
+          logger match {
+            case Some(l) => l.exception(e)
+            case None    => Unit
+          }
+      }
     }
   }
 
