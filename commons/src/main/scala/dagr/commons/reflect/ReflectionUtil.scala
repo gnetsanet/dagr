@@ -49,6 +49,8 @@ object ReflectionUtil {
   /** A runtime mirror for when it's necessary. */
   private val mirror: ru.Mirror = scala.reflect.runtime.currentMirror
 
+  val SpecialEmptyOrNoneToken = "//"
+
   /**
     * Creates a new instance of various java collections.  Will inspect the type given to see
     * if there is a no-arg constructor and will use that if possible.  If there is no constructor
@@ -290,7 +292,11 @@ object ReflectionUtil {
     */
   private[reflect] def typedValueFromString(resultType: Class[_], unitType: Class[_], value: String*): Try[Any] = Try {
     if (ReflectionUtil.isCollectionClass(resultType)) {
-      val typedValues = value.map(v => buildUnitFromString(unitType, v).get).asInstanceOf[Seq[java.lang.Object]]
+      val typedValues = value.indexOf(SpecialEmptyOrNoneToken) match {
+        case -1   => value.map(v => buildUnitFromString(unitType, v).get).asInstanceOf[Seq[java.lang.Object]]
+        case idx => value.drop(idx+1).map(v => buildUnitFromString(unitType, v).get).asInstanceOf[Seq[java.lang.Object]]
+      }
+      //val typedValues = value.map(v => buildUnitFromString(unitType, v).get).asInstanceOf[Seq[java.lang.Object]]
 
       // Condition for the collection type
       if (ReflectionUtil.isJavaCollectionClass(resultType)) {
@@ -324,9 +330,14 @@ object ReflectionUtil {
     * it will either return `None` if `s == null`, or `Some` object wrapping the an object of the wrapped type.
     */
   private def buildUnitOrOptionFromString(resultType: Class[_], unitType: Class[_], value: String): Try[Any] = Try {
-    val unit = buildUnitFromString(unitType, value).get
-    if (resultType == classOf[Option[_]]) Option(unit)
-    else unit
+    if (resultType == classOf[Option[_]] && value == SpecialEmptyOrNoneToken) {
+      None
+    }
+    else {
+      val unit = buildUnitFromString(unitType, value).get
+      if (resultType == classOf[Option[_]]) Option(unit)
+      else unit
+    }
   }
 
   /** Attempts to construct a single value of unitType from the provided String and return it. */
